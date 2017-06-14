@@ -1,0 +1,144 @@
+#!/usr/local/bin/perl
+
+# DESCRIPTION:
+#
+# This script, called by dsbmc-cli, adds a new submenu ("Mounted Devices")
+# to your fluxbox menu if it doesn't exist yet. If a device was mounted, it
+# adds a submenu to the "Mounted Devices" menu, named after the device and
+# mount point. It contains two entries, one for "unmount", which executes
+# "dsbmc-cli -u ...", and one for "eject", which executes "dsbmc-cli -e ..".
+# If a device was unmounted, it removes the submenu entry for the device.
+#
+# USAGE:
+#
+# dsbmc-cli -L mount fb-unmount -m %d %m ';' -L unmount fb-unmount -u %d ';'
+#
+# or with automount:
+#
+# dsbmc-cli -a -L mount fb-unmount -m %d %m ';' -L unmount fb-unmount -u %d ';'
+
+
+# vim: set tabstop=4:
+
+use strict;
+
+my $menu_path = "$ENV{'HOME'}/.fluxbox/menu";
+my $menu_name = "Mounted Devices";
+my @fb_menu;
+my ($mflag, $uflag, $dev, $mnt);
+
+sub find_submenu {
+	my ($label) = @_;
+	my $idx = 0;
+
+	foreach (@fb_menu) {
+		return $idx if (/^\s*\[submenu\]\s*\($label(\s+.*|\)$)/);
+		$idx++;
+	}
+	return -1;
+}
+
+sub add_submenu {
+	my $idx;
+
+	if (($idx = find_submenu($menu_name)) < 0) {
+		for ($idx = @fb_menu; $idx > 0; $idx--) {
+			last if $fb_menu[$idx] =~ /^\[end\]$/;
+		} 
+		return -1 if ($idx <= 0);
+	} else {
+		return $idx;
+	}
+	splice @fb_menu, $idx + 0, 0, "[submenu] ($menu_name)\n";
+	splice @fb_menu, $idx + 1, 0, "[end]\n";
+
+	return $idx;
+}
+
+sub add_submenu_entry {
+	my ($idx, $dev, $mntpt) = @_;
+
+	splice @fb_menu, $idx + 1, 0, " [submenu] ($dev on $mntpt)\n";
+	splice @fb_menu, $idx + 2, 0, "  [exec](Unmount){dsbmc-cli -u $dev}\n";
+	splice @fb_menu, $idx + 3, 0, "  [exec](Eject){dsbmc-cli -e $dev}\n";
+	splice @fb_menu, $idx + 4, 0, " [end]\n";
+}
+
+sub remove_submenu_entry {
+	my ($dev) = @_;
+	my ($idx, $rl);
+
+	while (($idx = find_submenu($dev)) > 0) {
+		do {
+			$rl = splice @fb_menu, $idx, 1;
+		} while ($rl !~ /\s*\[end\]/);
+	}
+}
+
+sub remove_submenu {
+	my ($i, $n, $idx);
+
+	return if (($idx = find_submenu($menu_name)) < 0);
+	
+	for ($n = 1, $i = $idx; $n && $i < @fb_menu; $i++) {
+		if ($fb_menu[$i] =~ /^\s*\[end\].*/) {
+			$n--;
+		} elsif ($fb_menu[$i] =~ /^\s*\[submenu\].*/) {
+			$n++;
+		}
+	}
+	return if ($n);
+	splice @fb_menu, $idx, $i - $idx - 1;
+}
+
+sub read_fbmenu {
+	open(FH, '<', $menu_path) or die $!;
+	@fb_menu = <FH>;
+	close FH;
+}
+
+sub write_fbmenu {
+	open(FH, '>', $menu_path) or die $!;
+	print FH @fb_menu;
+	close FH;
+}
+
+sub usage {
+	print STDERR "usage: $0 -m <dev> <mntpt>\n" .
+				 "       $0 -u <dev>\n";
+	exit 1;
+}
+
+while ($ARGV[0] =~ m/^-/) {
+	if ($ARGV[0] eq "-m") {
+		shift;
+		usage() if (@ARGV < 2);
+		$dev = $ARGV[0]; shift;
+		$mnt = $ARGV[0];
+		$mflag = 1;
+	} elsif ($ARGV[0] eq "-u") {
+		shift;
+		usage() if (@ARGV < 1);
+		$dev = $ARGV[0];
+		$uflag = 1;
+	} else {
+		usage();
+	}
+	shift;
+}
+usage() if (!$mflag && !$uflag);
+
+if ($mflag) {
+	my $idx;
+
+	read_fbmenu();
+	die "Failed to create submenu: $!\n"
+		if (($idx = add_submenu()) < 0);
+	add_submenu_entry($idx, $dev, $mnt);
+	write_fbmenu();
+} elsif ($uflag) {
+	read_fbmenu();
+	remove_submenu_entry($dev);
+	write_fbmenu();
+}
+
