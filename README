@@ -1,0 +1,17 @@
+				ABOUT
+
+This script, called by dsbmc-cli, adds a new submenu ("Mounted Devices")
+to your fluxbox menu if it doesn't exist yet. If a device was mounted, it
+adds a submenu to the "Mounted Devices" menu, named after the device and
+mount point. It contains two entries, one for "unmount", which executes
+"dsbmc-cli -u ...", and one for "eject", which executes "dsbmc-cli -e ..".
+If a device was unmounted, it removes the submenu entry for the device.
+
+				USAGE
+
+dsbmc-cli -L mount fb-unmount -m %d %m ';' -L unmount fb-unmount -u %d ';'
+
+or with automount:
+
+dsbmc-cli -a -L mount fb-unmount -m %d %m ';' -L unmount fb-unmount -u %d ';'
+
